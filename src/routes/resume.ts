@@ -3,8 +3,7 @@ import multer, { FileFilterCallback } from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
-import * as pdfParseModule from 'pdf-parse';
-const pdfParse = (pdfParseModule as unknown as { default: (buf: Buffer) => Promise<{ text: string }> }).default ?? pdfParseModule;
+import { PDFParse } from 'pdf-parse';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const router = Router();
@@ -27,7 +26,8 @@ interface PortfolioData {
 /** PDF 텍스트 추출 → AI 분석 → PortfolioData 반환 */
 async function analyzeResume(filePath: string, name: string, role: string): Promise<PortfolioData> {
   const buffer = fs.readFileSync(filePath);
-  const parsed = await pdfParse(buffer);
+  const parser = new PDFParse({ data: buffer });
+  const parsed = await parser.getText();
   const text = parsed.text.slice(0, 6000); // 토큰 절약을 위해 6000자로 제한
 
   const prompt = `당신은 이력서 분석 전문가입니다. 아래 이력서 텍스트를 분석해 포트폴리오 초안을 한국어로 작성해주세요.
