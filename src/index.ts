@@ -5,6 +5,7 @@ import authRouter from './routes/auth';
 import githubRouter from './routes/github';
 import resumeRouter from './routes/resume';
 import templatesRouter from './routes/templates';
+import aiRouter from './routes/ai';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -24,6 +25,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/github', githubRouter);
 app.use('/api/resume', resumeRouter);
 app.use('/api/templates', templatesRouter);
+app.use('/api/ai', aiRouter);
 
 /* ── Error Handler ── */
 app.use(errorHandler);
