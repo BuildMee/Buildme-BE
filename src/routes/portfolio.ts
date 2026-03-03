@@ -8,10 +8,12 @@ const router = Router();
 // 데이터 저장 경로
 const DATA_DIR = path.join(__dirname, '../../data');
 const DATA_FILE = path.join(DATA_DIR, 'portfolios.json');
+const SHARES_FILE = path.join(DATA_DIR, 'shares.json');
 
 // 데이터 디렉토리/파일 초기화
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, '{}', 'utf-8');
+if (!fs.existsSync(SHARES_FILE)) fs.writeFileSync(SHARES_FILE, '{}', 'utf-8');
 
 type PortfolioStore = Record<string, Portfolio[]>;
 
@@ -22,6 +24,29 @@ interface Portfolio {
   data: unknown;
   createdAt: string;
   updatedAt: string;
+}
+
+interface ShareEntry {
+  token: string;
+  title: string;
+  templateId: string;
+  data: unknown;
+  createdAt: string;
+  expiresAt: string; // 30일 후
+}
+
+type ShareStore = Record<string, ShareEntry>;
+
+function readShares(): ShareStore {
+  try {
+    return JSON.parse(fs.readFileSync(SHARES_FILE, 'utf-8')) as ShareStore;
+  } catch {
+    return {};
+  }
+}
+
+function writeShares(store: ShareStore): void {
+  fs.writeFileSync(SHARES_FILE, JSON.stringify(store, null, 2), 'utf-8');
 }
 
 function readStore(): PortfolioStore {
@@ -142,6 +167,66 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
   } catch (err) {
     next(err);
   }
+});
+
+/** POST /api/portfolio/share — 공유 링크 생성 (로그인 필요) */
+router.post('/share', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userKey = await getUserKey(req.headers.authorization);
+    if (!userKey) {
+      res.status(401).json({ success: false, message: '인증이 필요합니다.' });
+      return;
+    }
+
+    const { title, templateId, data } = req.body as { title?: string; templateId?: string; data?: unknown };
+    if (!templateId || !data) {
+      res.status(400).json({ success: false, message: 'templateId, data가 필요합니다.' });
+      return;
+    }
+
+    const token = randomUUID().replace(/-/g, '');
+    const now = new Date();
+    const expires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30일
+
+    const entry: ShareEntry = {
+      token,
+      title: title ?? '포트폴리오',
+      templateId,
+      data,
+      createdAt: now.toISOString(),
+      expiresAt: expires.toISOString(),
+    };
+
+    const shares = readShares();
+    shares[token] = entry;
+    writeShares(shares);
+
+    res.json({ success: true, token });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/portfolio/public/:token — 공개 조회 (인증 불필요) */
+router.get('/public/:token', (req: Request, res: Response) => {
+  const { token } = req.params;
+  const shares = readShares();
+  const entry = shares[token];
+
+  if (!entry) {
+    res.status(404).json({ success: false, message: '공유 링크가 존재하지 않거나 만료됐습니다.' });
+    return;
+  }
+
+  if (new Date(entry.expiresAt) < new Date()) {
+    // 만료된 항목 정리
+    delete shares[token];
+    writeShares(shares);
+    res.status(404).json({ success: false, message: '공유 링크가 만료됐습니다.' });
+    return;
+  }
+
+  res.json({ success: true, title: entry.title, templateId: entry.templateId, data: entry.data });
 });
 
 export default router;
