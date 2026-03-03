@@ -3,8 +3,78 @@ import multer, { FileFilterCallback } from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
+import * as pdfParseModule from 'pdf-parse';
+const pdfParse = (pdfParseModule as unknown as { default: (buf: Buffer) => Promise<{ text: string }> }).default ?? pdfParseModule;
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const router = Router();
+
+// AI 설정
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '');
+const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+interface PortfolioData {
+  name: string;
+  role: string;
+  intro: string;
+  skills: string[];
+  projects: { name: string; description: string; tech: string[]; highlights: string }[];
+  summary: string;
+  github?: string;
+  blog?: string;
+}
+
+/** PDF 텍스트 추출 → AI 분석 → PortfolioData 반환 */
+async function analyzeResume(filePath: string, name: string, role: string): Promise<PortfolioData> {
+  const buffer = fs.readFileSync(filePath);
+  const parsed = await pdfParse(buffer);
+  const text = parsed.text.slice(0, 6000); // 토큰 절약을 위해 6000자로 제한
+
+  const prompt = `당신은 이력서 분석 전문가입니다. 아래 이력서 텍스트를 분석해 포트폴리오 초안을 한국어로 작성해주세요.
+
+이름: ${name}
+직군: ${role}
+
+이력서 내용:
+${text}
+
+다음 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
+{
+  "name": "${name}",
+  "role": "${role}",
+  "intro": "이력서를 바탕으로 작성한 2~3문장 자기소개",
+  "skills": ["이력서에서 추출한 기술1", "기술2", "기술3"],
+  "projects": [
+    {
+      "name": "프로젝트명",
+      "description": "2~3문장 프로젝트 설명",
+      "tech": ["사용 기술1", "기술2"],
+      "highlights": "핵심 성과나 특징 한 줄"
+    }
+  ],
+  "summary": "전체 포트폴리오 한 줄 요약",
+  "github": "GitHub URL (있으면)",
+  "blog": "블로그 URL (있으면)"
+}`;
+
+  const result = await model.generateContent(prompt);
+  const responseText = result.response.text();
+  const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('AI 응답 파싱 실패');
+  return JSON.parse(jsonMatch[0]) as PortfolioData;
+}
+
+/** AI 분석 실패 시 기본 포트폴리오 초안 반환 */
+function buildFallbackPortfolio(name: string, role: string): PortfolioData {
+  return {
+    name,
+    role,
+    intro: `${name}입니다. ${role} 분야에서 활동하고 있습니다. 이력서를 기반으로 포트폴리오를 작성해주세요.`,
+    skills: [],
+    projects: [],
+    summary: `${role} ${name}의 포트폴리오`,
+  };
+}
 
 // 파일 저장 경로
 const UPLOAD_DIR = path.join(__dirname, '../../uploads');
@@ -119,10 +189,22 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     store[userKey].push(entry);
     writeStore(store);
 
+    // PDF 텍스트 추출 → AI 분석
+    let portfolio: PortfolioData;
+    let fallback = false;
+    try {
+      portfolio = await analyzeResume(req.file.path, name, role);
+    } catch {
+      portfolio = buildFallbackPortfolio(name, role);
+      fallback = true;
+    }
+
     res.json({
       success: true,
       message: '이력서가 성공적으로 업로드되었습니다.',
       resume: entry,
+      portfolio,
+      fallback,
     });
   } catch (err) {
     next(err);
