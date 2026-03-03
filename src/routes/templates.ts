@@ -1,6 +1,41 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import fs from 'fs';
+import path from 'path';
+import { randomUUID } from 'crypto';
 
 const router = Router();
+
+// 제출 데이터 저장 경로
+const DATA_DIR = path.join(__dirname, '../../data');
+const SUBMISSIONS_FILE = path.join(DATA_DIR, 'submissions.json');
+
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(SUBMISSIONS_FILE)) fs.writeFileSync(SUBMISSIONS_FILE, '[]', 'utf-8');
+
+interface Submission {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  previewUrl: string;
+  githubUrl: string;
+  author: string;
+  tags: string[];
+  status: 'pending' | 'approved' | 'rejected';
+  submittedAt: string;
+}
+
+function readSubmissions(): Submission[] {
+  try {
+    return JSON.parse(fs.readFileSync(SUBMISSIONS_FILE, 'utf-8')) as Submission[];
+  } catch {
+    return [];
+  }
+}
+
+function writeSubmissions(list: Submission[]): void {
+  fs.writeFileSync(SUBMISSIONS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+}
 
 interface Template {
   id: string;
@@ -141,6 +176,56 @@ router.post('/:id/like', (req: Request, res: Response) => {
 
   template.likes += 1;
   res.json({ success: true, likes: template.likes });
+});
+
+/**
+ * POST /api/templates/submit
+ * 템플릿 제출 (인증 불필요, 검토 후 등록)
+ *
+ * Body: { name, category, description, previewUrl, githubUrl, author, tags }
+ */
+router.post('/submit', (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { name, category, description, previewUrl, githubUrl, author, tags } = req.body as {
+      name?: string;
+      category?: string;
+      description?: string;
+      previewUrl?: string;
+      githubUrl?: string;
+      author?: string;
+      tags?: string;
+    };
+
+    if (!name || !category || !description || !author) {
+      res.status(400).json({ success: false, message: '이름, 카테고리, 설명, 작성자는 필수입니다.' });
+      return;
+    }
+
+    const parsedTags = tags
+      ? tags.split(',').map((t) => t.trim()).filter(Boolean)
+      : [];
+
+    const submission: Submission = {
+      id: randomUUID(),
+      name,
+      category,
+      description,
+      previewUrl: previewUrl ?? '',
+      githubUrl: githubUrl ?? '',
+      author,
+      tags: parsedTags,
+      status: 'pending',
+      submittedAt: new Date().toISOString(),
+    };
+
+    const list = readSubmissions();
+    list.push(submission);
+    writeSubmissions(list);
+
+    res.status(201).json({ success: true, submission });
+  } catch (err) {
+    next(err);
+  }
 });
 
 export default router;
