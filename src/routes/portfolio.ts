@@ -169,6 +169,41 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
+/** PUT /api/portfolio/:id — 수정 */
+router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userKey = await getUserKey(req.headers.authorization);
+    if (!userKey) {
+      res.status(401).json({ success: false, message: '인증이 필요합니다.' });
+      return;
+    }
+
+    const { id } = req.params;
+    const { title, templateId, data } = req.body as { title?: string; templateId?: string; data?: unknown };
+    if (!title || !templateId || !data) {
+      res.status(400).json({ success: false, message: 'title, templateId, data가 필요합니다.' });
+      return;
+    }
+
+    const store = readStore();
+    const list = store[userKey] ?? [];
+    const idx = list.findIndex((p) => p.id === id);
+
+    if (idx === -1) {
+      res.status(404).json({ success: false, message: '포트폴리오를 찾을 수 없습니다.' });
+      return;
+    }
+
+    list[idx] = { ...list[idx], title, templateId, data, updatedAt: new Date().toISOString() };
+    store[userKey] = list;
+    writeStore(store);
+
+    res.json({ success: true, portfolio: list[idx] });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** POST /api/portfolio/share — 공유 링크 생성 (로그인 필요) */
 router.post('/share', async (req: Request, res: Response, next: NextFunction) => {
   try {
