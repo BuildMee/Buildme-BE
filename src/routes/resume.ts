@@ -152,7 +152,7 @@ function pdfFilter(_req: Request, file: Express.Multer.File, cb: FileFilterCallb
 const upload = multer({
   storage,
   fileFilter: pdfFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
 });
 
 /** POST /api/resume/upload */
