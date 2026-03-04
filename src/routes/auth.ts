@@ -94,8 +94,9 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
       return;
     }
 
-    const user = await userRes.json();
-    res.json({ success: true, user });
+    const user = await userRes.json() as { login?: string };
+    const isAdmin = user.login === 'hdudwo';
+    res.json({ success: true, user, isAdmin });
   } catch (err) {
     next(err);
   }

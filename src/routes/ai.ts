@@ -191,15 +191,16 @@ ${repoSummary}
 ${extraSection}
 
 다음 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
+규칙: 각 프로젝트의 "description"에는 사용자가 입력한 "내 역할" 정보를 반드시 언급하고, "highlights"에는 사용자가 입력한 "특징/포인트"를 반드시 반영하세요. 입력값이 없을 경우에만 레포 정보를 기반으로 자유롭게 작성하세요.
 {
   "intro": "2~3문장의 자기소개",
   "skills": ["기술1", "기술2", "기술3"],
   "projects": [
     {
       "name": "프로젝트명",
-      "description": "2~3문장 프로젝트 설명",
+      "description": "2~3문장 프로젝트 설명 (사용자의 '내 역할' 반드시 포함)",
       "tech": ["기술1", "기술2"],
-      "highlights": "핵심 성과나 특징 한 줄"
+      "highlights": "핵심 성과나 특징 한 줄 (사용자의 '특징/포인트' 반드시 반영)"
     }
   ],
   "summary": "전체 포트폴리오 한 줄 요약"
@@ -224,7 +225,9 @@ ${extraSection}
           skills: allLangs.slice(0, 8).length > 0 ? allLangs.slice(0, 8) : ['JavaScript', 'TypeScript', 'React', 'Node.js'],
           projects: repos.slice(0, 4).map(r => ({
             name: r.name,
-            description: r.description || `${r.name} 프로젝트입니다. ${r.languages.join(', ')} 기술을 활용하여 개발하였습니다.`,
+            description: r.role
+              ? `${r.role}을(를) 담당한 ${r.name} 프로젝트입니다. ${r.languages.join(', ')} 기술을 활용하여 개발하였습니다.`
+              : (r.description || `${r.name} 프로젝트입니다. ${r.languages.join(', ')} 기술을 활용하여 개발하였습니다.`),
             tech: r.languages.slice(0, 4),
             highlights: r.highlights || `커밋 ${r.commitCount}회, ⭐ ${r.stars}`,
           })),

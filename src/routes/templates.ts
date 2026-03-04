@@ -228,4 +228,74 @@ router.post('/submit', (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+/** 어드민 인증: hdudwo GitHub 계정만 허용 */
+async function requireAdmin(authHeader: string | undefined): Promise<boolean> {
+  if (!authHeader?.startsWith('Bearer ')) return false;
+  const token = authHeader.slice(7);
+  try {
+    const res = await fetch('https://api.github.com/user', {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+    });
+    if (!res.ok) return false;
+    const user = await res.json() as { login?: string };
+    return user.login === 'hdudwo';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * GET /api/templates/submissions
+ * 어드민 전용: 전체 제출 목록 조회
+ */
+router.get('/submissions', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const isAdmin = await requireAdmin(req.headers.authorization);
+    if (!isAdmin) {
+      res.status(403).json({ success: false, message: '어드민 권한이 필요합니다.' });
+      return;
+    }
+    const status = req.query['status'] as string | undefined;
+    let list = readSubmissions();
+    if (status && ['pending', 'approved', 'rejected'].includes(status)) {
+      list = list.filter((s) => s.status === status);
+    }
+    list.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+    res.json({ success: true, submissions: list });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /api/templates/submissions/:id
+ * 어드민 전용: 제출 상태 변경 (approved / rejected)
+ */
+router.patch('/submissions/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const isAdmin = await requireAdmin(req.headers.authorization);
+    if (!isAdmin) {
+      res.status(403).json({ success: false, message: '어드민 권한이 필요합니다.' });
+      return;
+    }
+    const { id } = req.params;
+    const { status } = req.body as { status?: string };
+    if (!status || !['approved', 'rejected', 'pending'].includes(status)) {
+      res.status(400).json({ success: false, message: '유효하지 않은 상태값입니다.' });
+      return;
+    }
+    const list = readSubmissions();
+    const idx = list.findIndex((s) => s.id === id);
+    if (idx === -1) {
+      res.status(404).json({ success: false, message: '제출을 찾을 수 없습니다.' });
+      return;
+    }
+    list[idx].status = status as Submission['status'];
+    writeSubmissions(list);
+    res.json({ success: true, submission: list[idx] });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
