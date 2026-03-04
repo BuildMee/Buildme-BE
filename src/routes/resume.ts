@@ -28,7 +28,7 @@ async function analyzeResume(filePath: string, name: string, role: string): Prom
   const buffer = fs.readFileSync(filePath);
   const parser = new PDFParse({ data: buffer });
   const parsed = await parser.getText();
-  const text = parsed.text.slice(0, 6000); // 토큰 절약을 위해 6000자로 제한
+  const text = parsed.text.slice(0, 15000);
 
   const prompt = `당신은 이력서 분석 전문가입니다. 아래 이력서 텍스트를 분석해 포트폴리오 초안을 한국어로 작성해주세요.
 
