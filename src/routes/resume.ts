@@ -3,6 +3,7 @@ import multer, { FileFilterCallback } from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
+import { checkAndIncrementDailyCount, isAdmin } from '../utils/limits';
 import { PDFParse } from 'pdf-parse';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -177,9 +178,37 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
       return;
     }
 
+    // 무료 플랜: 이력서 1개 제한
+    if (!isAdmin(userKey)) {
+      const existingStore = readStore();
+      if ((existingStore[userKey]?.length ?? 0) >= 1) {
+        fs.unlinkSync(req.file.path);
+        res.status(429).json({
+          success: false,
+          code: 'RESUME_LIMIT',
+          message: '무료 플랜은 이력서를 1개만 업로드할 수 있습니다. 기존 이력서를 삭제하거나 Pro로 업그레이드하세요.',
+        });
+        return;
+      }
+    }
+
+    // 무료 플랜: 하루 포트폴리오 생성 5개 제한 (이력서 업로드도 포함)
+    const { allowed } = checkAndIncrementDailyCount(userKey);
+    if (!allowed) {
+      fs.unlinkSync(req.file.path);
+      res.status(429).json({
+        success: false,
+        code: 'DAILY_LIMIT',
+        message: '하루 포트폴리오 생성 5개 제한을 초과했습니다. Pro로 업그레이드하세요.',
+      });
+      return;
+    }
+
+    const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+
     const entry: ResumeEntry = {
       id: randomUUID(),
-      fileName: req.file.originalname,
+      fileName: originalName,
       storedPath: req.file.filename,
       uploadedAt: new Date().toISOString(),
     };

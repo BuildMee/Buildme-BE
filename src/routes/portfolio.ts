@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { checkAndIncrementDailyCount } from '../utils/limits';
 
 const router = Router();
 
@@ -103,6 +104,16 @@ router.post('/save', async (req: Request, res: Response, next: NextFunction) => 
     const { title, templateId, data } = req.body as { title?: string; templateId?: string; data?: unknown };
     if (!title || !templateId || !data) {
       res.status(400).json({ success: false, message: 'title, templateId, data가 필요합니다.' });
+      return;
+    }
+
+    const { allowed } = checkAndIncrementDailyCount(userKey);
+    if (!allowed) {
+      res.status(429).json({
+        success: false,
+        code: 'DAILY_LIMIT',
+        message: '하루 포트폴리오 생성 5개 제한을 초과했습니다. Pro로 업그레이드하세요.',
+      });
       return;
     }
 
